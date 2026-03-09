@@ -113,4 +113,4 @@ Time-bond challenge mechanism allowing:
 
 ## License
 
-MIT OR Apache-2.0
+DOSL - See License File
