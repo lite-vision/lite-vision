@@ -1,0 +1,38 @@
+# Build artifacts
+/target/
+**/target/
+
+# Cargo lock files (optional - uncomment if you want to exclude)
+# Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+*. secrets
+*.pem
+*.key
+
+# Test outputs
+*.prof
+*.perf
+
+# Debug
+*.pdb
+
+# Rust
+**/*.rs.bk
+
+# Optional: exclude Cargo.lock for pure workspace development
+# (uncomment if you want to exclude)
+# lite-vision/Cargo.lock

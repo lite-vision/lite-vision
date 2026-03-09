@@ -1,0 +1,26 @@
+[package]
+name = "lite-vision-observability"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
+tokio = { workspace = true }
+blake3 = { workspace = true }
+bincode = { workspace = true }
+hex = "0.4"
+rand = { workspace = true }
+
+[features]
+default = ["metrics", "logging", "tracing", "replay"]
+metrics = []
+logging = []
+tracing = []
+replay = []
