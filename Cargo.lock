@@ -480,6 +480,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "lite-vision-core"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "blake3",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "lite-vision-intelligence"
 version = "0.1.0"
 dependencies = [
@@ -487,6 +497,7 @@ dependencies = [
  "bincode",
  "blake3",
  "futures",
+ "lite-vision-core",
  "rand",
  "serde",
  "serde_json",
@@ -529,6 +540,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "blake3",
+ "lite-vision-core",
  "serde",
  "serde_json",
  "thiserror",
@@ -552,6 +564,7 @@ version = "0.1.0"
 dependencies = [
  "bincode",
  "blake3",
+ "lite-vision-core",
  "serde",
  "serde_json",
  "thiserror",
@@ -567,6 +580,7 @@ dependencies = [
  "blake3",
  "ed25519-dalek",
  "futures",
+ "lite-vision-core",
  "rand",
  "serde",
  "serde_json",

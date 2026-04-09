@@ -18,6 +18,7 @@ blake3 = { workspace = true }
 ed25519-dalek = { workspace = true }
 rand = { workspace = true }
 bincode = { workspace = true }
+lite-vision-core = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "lite-vision-sdk"
+name = "lite-vision-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,8 +8,13 @@ repository.workspace = true
 
 [dependencies]
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true }
-futures = { workspace = true }
 blake3 = { workspace = true }
+bincode = { workspace = true }
+
+[lints.rust]
+unsafe-op-in-unsafe-fn = "forbid"
+
+[features]
+default = []
+std = []
