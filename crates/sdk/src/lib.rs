@@ -4,6 +4,13 @@ pub mod receipts;
 
 pub use client::*;
 pub use jobs::*;
-pub use receipts::*;
+pub use jobs::{Budget, ExecutionMode, QoSClass};
+pub use receipts::RateLimitInfo as ApiRateLimitInfo;
+pub use receipts::ReceiptQuery;
+pub use receipts::{
+    ArtifactListRequest, ArtifactListResponse, ArtifactResponse, ComputeUsage, NetworkStatus,
+    NodeInfo, NodeStatus, NodeType, RPACKDeltaRequest, RPACKDeltaResponse, ReceiptListResponse,
+    ReceiptResponse, VerificationStatus,
+};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

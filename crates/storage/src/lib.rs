@@ -10,4 +10,7 @@ pub use crdt::*;
 pub use memory_model::*;
 pub use partition_manager::*;
 
+pub use artifact::StorageTier;
+pub use memory_model::EvictionPolicy;
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -1,15 +1,14 @@
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
-
-pub mod types;
-pub mod error;
-pub mod deterministic;
 pub mod canonical;
+pub mod conformance;
+pub mod deterministic;
+pub mod error;
+pub mod types;
 
-pub use types::*;
-pub use error::*;
-pub use deterministic::*;
 pub use canonical::*;
+pub use conformance::*;
+pub use deterministic::*;
+pub use error::*;
+pub use types::*;
 
 pub const DOMAIN_SEPARATOR: &[u8] = b"LITE-VISION";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

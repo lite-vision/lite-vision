@@ -3,7 +3,6 @@ use crate::{
     NodeInfo, NodeStatus, NodeType, RPACKDeltaRequest, RPACKDeltaResponse, ReceiptListResponse,
     ReceiptQuery, ReceiptResponse, VerificationStatus,
 };
-use crate::{Budget, ExecutionMode, QoSClass};
 use crate::{
     JobCancelResponse, JobListRequest, JobListResponse, JobRequest, JobResponse, JobStatus,
 };
