@@ -226,7 +226,7 @@ impl DisputeEngine {
 
         let fraud_proof_bytes =
             bincode::serialize(&fraud_proof).map_err(|_| DisputeError::SerializationError)?;
-        let fraud_proof_hash = blake3::hash(&fraud_proof_bytes).as_bytes().clone();
+        let _fraud_proof_hash = blake3::hash(&fraud_proof_bytes).as_bytes().clone();
 
         let dispute_id = blake3::hash(
             &bincode::serialize(&(job_id, receipt_hash, challenger_id, current_block)).unwrap(),

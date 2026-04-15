@@ -1,4 +1,4 @@
-use crate::types::{BlockHeight, DomainSeparatedHash, Hash32};
+use crate::types::DomainSeparatedHash;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

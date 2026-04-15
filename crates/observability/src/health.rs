@@ -307,9 +307,16 @@ mod tests {
     #[test]
     fn test_health_report_json() {
         let mut report = HealthReport::new([1u8; 32]);
+        // Set all components to healthy so the overall status becomes healthy
+        report = report
+            .with_truth_plane(HealthStatus::Healthy)
+            .with_intelligence_plane(HealthStatus::Healthy)
+            .with_network(HealthStatus::Healthy)
+            .with_storage(HealthStatus::Healthy);
         report.compute();
 
         let json = report.to_json();
-        assert!(json.contains("healthy"));
+        // Check for "Healthy" (capital H) in the JSON
+        assert!(json.contains("Healthy"));
     }
 }

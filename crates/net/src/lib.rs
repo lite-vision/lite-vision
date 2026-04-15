@@ -9,3 +9,6 @@ pub use message::*;
 pub use network::*;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+#[cfg(test)]
+pub mod tests; // Integration tests

@@ -6,7 +6,7 @@ use crate::protocol::{MessageType, ProtocolMessage};
 use crate::p2p::{P2PNetwork, Peer, PeerStatus, PeerInfo, P2PConfig};
 use crate::message::NetworkMessage;
 
-const PROTOCOL_VERSION: u32 = 1;
+const _PROTOCOL_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NetworkConfig {

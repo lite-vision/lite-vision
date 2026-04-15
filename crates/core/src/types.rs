@@ -145,4 +145,27 @@ mod tests {
         assert_eq!(hash.data, b"data");
         assert_eq!(hash.output.len(), 32);
     }
+
+    #[test]
+    fn test_domain_separation_different_domains() {
+        let hash1 = DomainSeparatedHash::new(b"domain1", b"data");
+        let hash2 = DomainSeparatedHash::new(b"domain2", b"data");
+        assert_ne!(hash1.output, hash2.output);
+    }
+
+    #[test]
+    fn test_domain_separation_different_data() {
+        let hash1 = DomainSeparatedHash::new(b"domain", b"data1");
+        let hash2 = DomainSeparatedHash::new(b"domain", b"data2");
+        assert_ne!(hash1.output, hash2.output);
+    }
+
+    #[test]
+    fn test_domain_separation_deterministic() {
+        for _ in 0..100 {
+            let hash1 = DomainSeparatedHash::new(b"test", b"data");
+            let hash2 = DomainSeparatedHash::new(b"test", b"data");
+            assert_eq!(hash1.output, hash2.output);
+        }
+    }
 }

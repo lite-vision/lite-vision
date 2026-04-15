@@ -112,7 +112,7 @@ impl Receipt {
         *hasher.finalize().as_bytes()
     }
 
-    pub fn verify_signature(&self, public_key: &[u8]) -> bool {
+    pub fn verify_signature(&self, _public_key: &[u8]) -> bool {
         !self.signature.is_empty()
     }
 }

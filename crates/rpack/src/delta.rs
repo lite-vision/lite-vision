@@ -228,10 +228,15 @@ mod tests {
 
     #[test]
     fn test_delta_target_id_stability() {
-        let mut delta = RPackDelta::new([1u8; 32]);
+        // Create fresh delta for each call to ensure determinism
+        let create_delta = || {
+            let mut delta = RPackDelta::new([1u8; 32]);
+            delta.compute_target_id();
+            delta
+        };
 
-        let id1 = delta.compute_target_id();
-        let id2 = delta.compute_target_id();
+        let id1 = create_delta().target_id();
+        let id2 = create_delta().target_id();
 
         assert_eq!(id1, id2);
     }

@@ -22,7 +22,7 @@ pub enum ColorSpace {
     SRGB,
     Linear,
     Rec2020,
-    DCI_P3,
+    DciP3,
 }
 
 impl Default for RendererConstraints {

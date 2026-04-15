@@ -140,7 +140,7 @@ impl ReplayBundle {
             return Err(ReplayError::InvalidVersion);
         }
 
-        let computed_hash = self.compute_bundle_hash();
+        let _computed_hash = self.compute_bundle_hash();
         if self.input_hash != Self::hash_bytes(&self.input_bytes) {
             return Err(ReplayError::InputHashMismatch);
         }

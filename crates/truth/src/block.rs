@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+// Re-export Transaction and TransactionType from transaction module
+pub use crate::transaction::{Transaction, TransactionType};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Block {
     pub header: BlockHeader,
@@ -16,16 +19,6 @@ pub struct BlockHeader {
     pub state_root: [u8; 32],
     pub receipts_root: [u8; 32],
     pub validator_set_hash: [u8; 32],
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Transaction {
-    pub id: [u8; 32],
-    pub sender: [u8; 32],
-    pub payload: Vec<u8>,
-    pub nonce: u64,
-    pub fee: u64,
-    pub signature: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -3,6 +3,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+use crate::state::State;
+use crate::block::Block;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConsensusState {
     Idle,
@@ -405,6 +408,65 @@ impl ConsensusEngine {
             .filter(|v| v.vote_type == vote_type)
             .count();
         count >= self.threshold
+    }
+
+    /// Create a block proposal from the current state and mempool
+    pub fn propose_block(
+        &self,
+        state: &State,
+        transactions: &[super::block::Transaction],
+        parent_hash: [u8; 32],
+    ) -> Block {
+        let header = super::block::BlockHeader {
+            height: state.height + 1,
+            timestamp: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+            parent_hash,
+            state_root: state.state_root,
+            receipts_root: [0u8; 32], // Will be computed from receipts
+            validator_set_hash: self.get_validator_set_hash(),
+        };
+
+        Block::new(header, transactions.to_vec())
+    }
+
+    /// Finalize a block by applying state transitions
+    pub fn finalize_block(
+        &self,
+        state: &mut State,
+        block: &Block,
+    ) -> Result<Vec<[u8; 32]>, String> {
+        // Apply transactions to state
+        let receipts = state
+            .apply_block_transactions(block.transactions.as_slice())
+            .map_err(|e| e.to_string())?;
+
+        // Increment block height
+        state.increment_height();
+
+        // Compute new state root
+        state.compute_state_root();
+
+        // Return receipt IDs
+        Ok(receipts
+            .into_iter()
+            .flatten()
+            .map(|r| r.id)
+            .collect())
+    }
+
+    /// Check if we're ready to produce blocks
+    pub async fn can_produce(&self) -> bool {
+        let state = self.state.read().await;
+        state.state == ConsensusState::Idle || state.state == ConsensusState::Propose
+    }
+
+    /// Get current proposer
+    pub async fn get_current_proposer(&self) -> [u8; 32] {
+        let state = self.state.read().await;
+        state.proposer
     }
 }
 

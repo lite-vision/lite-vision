@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 
+pub use crate::kernel::{KernelExecutionContext, KernelExecutor, KernelOutput, KernelSpec};
+pub use crate::verification::{
+    VerificationEngine, VerificationJob, VerificationMode, VerificationPolicy as VPolicy,
+    VerificationResult, VerificationStatus,
+};
+
+use crate::kernel::KernelRegistry;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobTicket {
     pub job_id: [u8; 32],
@@ -321,13 +329,199 @@ impl JobResult {
 
 pub struct JobExecutor {
     pub jobs: std::collections::HashMap<[u8; 32], Job>,
+    kernel_executor: Option<KernelExecutor>,
+    kernel_registry: KernelRegistry,
+    /// Associated verification engine for sampling jobs
+    pub verification_engine: Option<VerificationEngine>,
 }
 
 impl JobExecutor {
     pub fn new() -> Self {
         Self {
             jobs: std::collections::HashMap::new(),
+            kernel_executor: None,
+            kernel_registry: KernelRegistry::new(),
+            verification_engine: None,
         }
+    }
+
+    /// Create JobExecutor with a verification engine
+    pub fn with_verification(policy: crate::verification::VerificationPolicy) -> Self {
+        Self {
+            jobs: std::collections::HashMap::new(),
+            kernel_executor: None,
+            kernel_registry: KernelRegistry::new(),
+            verification_engine: Some(VerificationEngine::new(policy)),
+        }
+    }
+
+    /// Schedule a job for verification sampling
+    pub fn schedule_verification(
+        &mut self,
+        job_id: [u8; 32],
+        operator_id: [u8; 32],
+        input_hash: [u8; 32],
+        output_hash: [u8; 32],
+    ) -> Result<(), JobError> {
+        let job = self.jobs.get(&job_id).ok_or(JobError::JobNotFound)?;
+
+        // Check if verification engine is available
+        if let Some(ref mut v_engine) = self.verification_engine {
+            // Convert job verification policy to verification engine policy
+            let _v_policy = crate::verification::VerificationPolicy {
+                mode: crate::verification::VerificationMode::Probabilistic,
+                redundancy_factor: job.ticket.verification_policy.redundancy_factor,
+                verification_rate: job.ticket.verification_policy.verification_rate,
+                escalation_threshold: job.ticket.verification_policy.escalation_threshold,
+                challenge_window_blocks: job.ticket.verification_policy.challenge_window_blocks,
+                sampling_strategy: crate::verification::SamplingStrategy::Random,
+            };
+
+            let v_job = VerificationJob {
+                job_id,
+                operator_id,
+                input_hash,
+                output_hash,
+                expected_hash: None,
+                verification_mode: VerificationMode::Probabilistic,
+                status: VerificationStatus::Pending,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs(),
+                completed_at: None,
+                result: None,
+            };
+
+            v_engine.schedule_verification(v_job);
+        }
+
+        Ok(())
+    }
+
+    /// Complete a verification and get result
+    pub fn complete_verification(
+        &mut self,
+        job_id: &[u8; 32],
+        result: VerificationResult,
+    ) -> Result<VerificationStatus, crate::verification::VerificationError> {
+        if let Some(ref mut v_engine) = self.verification_engine {
+            v_engine.complete_verification(job_id, result)
+        } else {
+            Err(crate::verification::VerificationError::JobNotFound)
+        }
+    }
+
+    /// Check if job should be verified based on verification policy
+    pub fn should_verify(&self, _job_id: &[u8; 32]) -> bool {
+        if let Some(ref v_engine) = self.verification_engine {
+            v_engine.should_verify()
+        } else {
+            false
+        }
+    }
+
+    /// Get verification result for a job
+    pub fn get_verification_result(&self, job_id: &[u8; 32]) -> Option<&VerificationResult> {
+        if let Some(ref v_engine) = self.verification_engine {
+            v_engine
+                .get_verification(job_id)
+                .and_then(|v| v.result.as_ref())
+        } else {
+            None
+        }
+    }
+
+    /// Trigger dispute for a job (called when verification fails)
+    pub fn trigger_dispute(
+        &mut self,
+        job_id: [u8; 32],
+        challenger_id: [u8; 32],
+    ) -> Result<crate::verification::Dispute, crate::verification::VerificationError> {
+        if let Some(ref mut v_engine) = self.verification_engine {
+            if let Some(job) = self.jobs.get(&job_id) {
+                let operator_id = job.assigned_operator.unwrap_or([0u8; 32]);
+                return v_engine.create_dispute(job_id, challenger_id, operator_id);
+            }
+        }
+        Err(crate::verification::VerificationError::JobNotFound)
+    }
+
+    /// Execute a job using the kernel executor
+    pub fn execute_job(
+        &mut self,
+        job_id: &[u8; 32],
+        input_data: Vec<u8>,
+        operator_id: [u8; 32],
+        block_height: u64,
+    ) -> Result<KernelOutput, JobExecutionError> {
+        // Get job status first, check if executable
+        let is_executable = {
+            let job = self
+                .jobs
+                .get(job_id)
+                .ok_or(JobExecutionError::JobNotFound)?;
+            matches!(job.status, JobStatus::Assigned | JobStatus::Executing)
+        };
+
+        if !is_executable {
+            return Err(JobExecutionError::InvalidState);
+        }
+
+        // Get required data from job (copy needed data to avoid borrow conflicts)
+        let (kernel_id, budget) = {
+            let job = self
+                .jobs
+                .get(job_id)
+                .ok_or(JobExecutionError::JobNotFound)?;
+            (job.ticket.kernel_id, job.ticket.budget)
+        };
+
+        // Get the kernel spec
+        let spec = self.get_kernel_spec(&kernel_id)?;
+
+        // Create execution context
+        let ctx = KernelExecutionContext::new(*job_id, operator_id, block_height)
+            .with_budget(budget.max_gpu_cycles)
+            .with_memory_limit(budget.max_memory_bytes);
+
+        // Create or reuse kernel executor with context
+        let mut executor = KernelExecutor::new().with_context(ctx);
+
+        // Execute the kernel
+        let output = executor
+            .execute(&spec, input_data)
+            .map_err(JobExecutionError::KernelError)?;
+
+        // Update job status to executing (now we have mutable access)
+        if let Some(job) = self.jobs.get_mut(job_id) {
+            job.start_execution();
+        }
+
+        Ok(output)
+    }
+
+    /// Get kernel spec from registry
+    pub fn get_kernel_spec(&self, _kernel_id: &[u8; 32]) -> Result<KernelSpec, JobExecutionError> {
+        // For now, create a default spec if not found in registry
+        // In production, this would query the registry
+        Ok(KernelSpec::new(
+            "default".to_string(),
+            1,
+            1_000_000_000,
+            8_589_934_592,
+            true,
+        ))
+    }
+
+    /// Register a kernel for job execution
+    pub fn register_kernel<K: super::kernel::Kernel + 'static>(&mut self, kernel: K) {
+        self.kernel_registry.register(kernel);
+    }
+
+    /// Check if kernel is registered
+    pub fn has_kernel(&self, kernel_id: &[u8; 32]) -> bool {
+        self.kernel_registry.has_kernel(kernel_id)
     }
 
     pub fn submit_job(
@@ -449,6 +643,28 @@ pub enum JobError {
     DeadlineExceeded,
     OperatorNotFound,
 }
+
+/// Errors that can occur during job execution
+#[derive(Debug, Clone)]
+pub enum JobExecutionError {
+    JobNotFound,
+    KernelError(String),
+    InvalidState,
+    InsufficientBudget,
+}
+
+impl std::fmt::Display for JobExecutionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            JobExecutionError::JobNotFound => write!(f, "Job not found"),
+            JobExecutionError::KernelError(msg) => write!(f, "Kernel error: {}", msg),
+            JobExecutionError::InvalidState => write!(f, "Invalid job state for execution"),
+            JobExecutionError::InsufficientBudget => write!(f, "Insufficient budget"),
+        }
+    }
+}
+
+impl std::error::Error for JobExecutionError {}
 
 #[cfg(test)]
 mod tests {
@@ -613,7 +829,7 @@ mod tests {
             output_size: 600_000_000,
         };
 
-        let result = JobResult::new([7u8; 32], cost);
+        let result = JobResult::new([7u8; 32], cost.clone());
 
         let refund = executor.complete_job(&job_id, result, 20).unwrap();
 
@@ -641,7 +857,7 @@ mod tests {
             output_size: 600_000_000,
         };
 
-        let result = JobResult::new([7u8; 32], cost);
+        let result = JobResult::new([7u8; 32], cost.clone());
 
         let result_err = executor.complete_job(&job_id, result, 20);
 

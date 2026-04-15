@@ -10,6 +10,12 @@ pub mod messaging;
 pub mod cross_partition;
 pub mod validator_set;
 pub mod rpc;
+pub mod sync;
+pub mod pruning;
+pub mod settlement; // NEW - Economic settlement primitives
+
+#[cfg(test)]
+pub mod integration; // Integration tests
 
 pub use consensus::*;
 pub use state::*;
@@ -23,5 +29,8 @@ pub use messaging::*;
 pub use cross_partition::*;
 pub use validator_set::*;
 pub use rpc::*;
+pub use sync::*;
+pub use pruning::*;
+pub use settlement::*; // NEW
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MetricType {
     Counter,
@@ -196,24 +197,36 @@ impl MetricsCollector {
                 registry.register(MetricDefinition::new("block_height", MetricType::Gauge, "Current block height", plane, component));
                 registry.register(MetricDefinition::new("block_time_ms", MetricType::Histogram, "Block production time in milliseconds", plane, component));
                 registry.register(MetricDefinition::new("vote_latency_ms", MetricType::Histogram, "Vote propagation latency", plane, component));
+                registry.register(MetricDefinition::new("view_number", MetricType::Gauge, "Current consensus view/round", plane, component));
+                registry.register(MetricDefinition::new("proposals_total", MetricType::Counter, "Total block proposals", plane, component));
             }
             ("truth", "mempool") => {
                 registry.register(MetricDefinition::new("size", MetricType::Gauge, "Mempool transaction count", plane, component));
+                registry.register(MetricDefinition::new("transactions_submitted", MetricType::Counter, "Total transactions submitted", plane, component));
             }
             ("truth", "network") => {
                 registry.register(MetricDefinition::new("peer_count", MetricType::Gauge, "Number of connected peers", plane, component));
+                registry.register(MetricDefinition::new("messages_received", MetricType::Counter, "Total messages received", plane, component));
+                registry.register(MetricDefinition::new("messages_sent", MetricType::Counter, "Total messages sent", plane, component));
             }
             ("truth", "governance") => {
                 registry.register(MetricDefinition::new("dispute_count", MetricType::Counter, "Total dispute count", plane, component));
             }
             ("intel", "operator") => {
                 registry.register(MetricDefinition::new("active_jobs", MetricType::Gauge, "Number of active jobs", plane, component));
+                registry.register(MetricDefinition::new("jobs_submitted", MetricType::Counter, "Total jobs submitted", plane, component));
+                registry.register(MetricDefinition::new("jobs_completed", MetricType::Counter, "Total jobs completed successfully", plane, component));
+                registry.register(MetricDefinition::new("jobs_failed", MetricType::Counter, "Total jobs failed", plane, component));
                 registry.register(MetricDefinition::new("gpu_cycles_used", MetricType::Counter, "GPU cycles consumed", plane, component));
                 registry.register(MetricDefinition::new("cpu_cycles_used", MetricType::Counter, "CPU cycles consumed", plane, component));
             }
             ("intel", "verification") => {
+                registry.register(MetricDefinition::new("jobs_sampled", MetricType::Counter, "Jobs sampled for verification", plane, component));
+                registry.register(MetricDefinition::new("verification_passed", MetricType::Counter, "Verifications passed", plane, component));
+                registry.register(MetricDefinition::new("verification_failed", MetricType::Counter, "Verifications failed", plane, component));
                 registry.register(MetricDefinition::new("receipt_failures", MetricType::Counter, "Receipt verification failures", plane, component));
                 registry.register(MetricDefinition::new("verification_pass_rate", MetricType::Gauge, "Verification pass rate (0-1)", plane, component));
+                registry.register(MetricDefinition::new("disputes_raised", MetricType::Counter, "Total disputes raised", plane, component));
             }
             ("storage", "artifact") => {
                 registry.register(MetricDefinition::new("artifact_count", MetricType::Gauge, "Total artifact count", plane, component));
@@ -223,6 +236,24 @@ impl MetricsCollector {
             }
             _ => {}
         }
+    }
+
+    /// Register all core metrics at once
+    pub async fn register_all_metrics(&self) {
+        // Truth plane - consensus
+        self.register_metrics("truth", "consensus").await;
+        // Truth plane - mempool
+        self.register_metrics("truth", "mempool").await;
+        // Truth plane - network
+        self.register_metrics("truth", "network").await;
+        // Truth plane - governance
+        self.register_metrics("truth", "governance").await;
+        // Intelligence plane - operator
+        self.register_metrics("intel", "operator").await;
+        // Intelligence plane - verification
+        self.register_metrics("intel", "verification").await;
+        // Storage - artifacts
+        self.register_metrics("storage", "artifact").await;
     }
 
     pub async fn increment_counter(&self, name: &str) {

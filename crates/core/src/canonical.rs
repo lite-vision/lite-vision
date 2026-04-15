@@ -351,4 +351,97 @@ mod tests {
         let decoded: TestStruct = versioned.decode().unwrap();
         assert_eq!(value, decoded);
     }
+
+    #[test]
+    fn test_canonical_encoding_deterministic() {
+        let value = TestStruct {
+            a: 42,
+            b: 1234567890,
+            c: vec![1, 2, 3, 4],
+        };
+
+        // Same input should always produce same output
+        let encoded1 = CanonicalEncoder::encode(&value).unwrap();
+        let encoded2 = CanonicalEncoder::encode(&value).unwrap();
+        assert_eq!(encoded1, encoded2);
+    }
+
+    #[test]
+    fn test_canonical_encoding_different_structs() {
+        let value1 = TestStruct {
+            a: 1,
+            b: 2,
+            c: vec![1],
+        };
+        let value2 = TestStruct {
+            a: 2,
+            b: 1,
+            c: vec![2],
+        };
+
+        let encoded1 = CanonicalEncoder::encode(&value1).unwrap();
+        let encoded2 = CanonicalEncoder::encode(&value2).unwrap();
+        assert_ne!(encoded1, encoded2);
+    }
+
+    #[test]
+    fn test_verify_canonical_encoding_valid() {
+        let data = b"test data";
+        let hash = hash_data(data);
+
+        let result = verify_canonical_encoding(data, &hash);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_verify_canonical_encoding_invalid() {
+        let data = b"test data";
+        let wrong_hash = [0u8; 32];
+
+        let result = verify_canonical_encoding(data, &wrong_hash);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_byte_writer_varint() {
+        // Test various varint values
+        let test_cases = vec![0u64, 1, 127, 128, 300, 16384, u64::MAX];
+
+        for val in test_cases {
+            let mut writer = ByteWriter::new();
+            writer.write_varint(val);
+            let bytes = writer.into_bytes();
+
+            let mut reader = ByteReader::new(bytes);
+            let decoded = reader.read_varint().unwrap();
+            assert_eq!(decoded, val);
+        }
+    }
+
+    #[test]
+    fn test_byte_writer_read_roundtrip() {
+        let mut writer = ByteWriter::new();
+        writer.write_u8(255);
+        writer.write_u16(65535);
+        writer.write_u32(u32::MAX);
+        writer.write_u64(u64::MAX);
+        writer.write_i8(-1);
+        writer.write_i16(-32768);
+        writer.write_i32(-2147483648);
+        writer.write_i64(i64::MIN);
+        writer.write_bytes(b"test");
+
+        let bytes = writer.into_bytes();
+        let mut reader = ByteReader::new(bytes);
+
+        assert_eq!(reader.read_u8().unwrap(), 255);
+        assert_eq!(reader.read_u16().unwrap(), 65535);
+        assert_eq!(reader.read_u32().unwrap(), u32::MAX);
+        assert_eq!(reader.read_u64().unwrap(), u64::MAX);
+        assert_eq!(reader.read_i8().unwrap(), -1);
+        assert_eq!(reader.read_i16().unwrap(), -32768);
+        assert_eq!(reader.read_i32().unwrap(), -2147483648);
+        assert_eq!(reader.read_i64().unwrap(), i64::MIN);
+        assert_eq!(reader.read_bytes(4).unwrap(), b"test");
+    }
 }

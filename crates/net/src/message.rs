@@ -20,6 +20,37 @@ impl NetworkMessage {
     }
 }
 
+/// Job broadcast message for P2P job propagation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobBroadcastMessage {
+    pub job_id: [u8; 32],
+    pub data: Vec<u8>,
+    pub origin: [u8; 32],
+}
+
+/// Receipt broadcast message for P2P receipt propagation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReceiptBroadcastMessage {
+    pub receipt_id: [u8; 32],
+    pub data: Vec<u8>,
+    pub origin: [u8; 32],
+}
+
+/// Discovery request message for peer discovery
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryRequestMessage {
+    pub requester_id: [u8; 32],
+    pub seq: u64,
+}
+
+/// Discovery response message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiscoveryResponseMessage {
+    pub responder_id: [u8; 32],
+    pub seq: u64,
+    pub peers: Vec<crate::p2p::PeerInfo>,
+}
+
 pub struct MessageQueue {
     topics: std::collections::HashMap<String, Vec<NetworkMessage>>,
 }

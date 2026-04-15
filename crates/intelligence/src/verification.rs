@@ -1,5 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+/// Verification engine for job result verification
+/// Integrates with job lifecycle: samples executed jobs for verification
+/// and triggers disputes on failure
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum VerificationMode {
@@ -152,6 +158,11 @@ pub struct VerificationEngine {
     pub verification_queue: VecDeque<[u8; 32]>,
     pub policy: VerificationPolicy,
     pub challenge_counter: HashMap<[u8; 32], u32>,
+    /// Metrics tracking
+    pub total_sampled: u64,
+    pub total_passed: u64,
+    pub total_failed: u64,
+    pub total_disputes: u64,
 }
 
 impl VerificationEngine {
@@ -162,6 +173,77 @@ impl VerificationEngine {
             verification_queue: VecDeque::new(),
             policy,
             challenge_counter: HashMap::new(),
+            total_sampled: 0,
+            total_passed: 0,
+            total_failed: 0,
+            total_disputes: 0,
+        }
+    }
+
+    /// Sample a completed job for verification
+    /// Called when a job completes execution
+    pub fn sample_job(
+        &mut self,
+        job_id: [u8; 32],
+        operator_id: [u8; 32],
+        input_hash: [u8; 32],
+        output_hash: [u8; 32],
+    ) -> bool {
+        // Check if we should verify this job based on policy rate
+        if !self.should_verify() {
+            return false;
+        }
+
+        self.total_sampled += 1;
+
+        let verification_job = VerificationJob {
+            job_id,
+            operator_id,
+            input_hash,
+            output_hash,
+            expected_hash: None,
+            verification_mode: self.policy.mode,
+            status: VerificationStatus::Pending,
+            created_at: current_timestamp(),
+            completed_at: None,
+            result: None,
+        };
+
+        self.schedule_verification(verification_job);
+        true
+    }
+
+    /// Record verification result and update metrics
+    pub fn record_verification_result(
+        &mut self,
+        job_id: &[u8; 32],
+        result: VerificationResult,
+    ) -> Result<VerificationStatus, VerificationError> {
+        let status = self.complete_verification(job_id, result.clone())?;
+
+        if result.matches {
+            self.total_passed += 1;
+        } else {
+            self.total_failed += 1;
+        }
+
+        Ok(status)
+    }
+
+    /// Get verification metrics
+    pub fn get_metrics(&self) -> VerificationMetrics {
+        let pass_rate = if self.total_sampled > 0 {
+            self.total_passed as f64 / self.total_sampled as f64
+        } else {
+            0.0
+        };
+
+        VerificationMetrics {
+            total_sampled: self.total_sampled,
+            total_passed: self.total_passed,
+            total_failed: self.total_failed,
+            total_disputes: self.total_disputes,
+            pass_rate,
         }
     }
 
@@ -411,12 +493,85 @@ pub enum RedundancyResult {
     Inconclusive,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerificationError {
     JobNotFound,
     DisputeNotFound,
     InvalidState,
     InsufficientEvidence,
+}
+
+/// Metrics from verification engine
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationMetrics {
+    pub total_sampled: u64,
+    pub total_passed: u64,
+    pub total_failed: u64,
+    pub total_disputes: u64,
+    pub pass_rate: f64,
+}
+
+/// Async version of VerificationEngine with thread-safe state
+pub struct AsyncVerificationEngine {
+    inner: Arc<RwLock<VerificationEngine>>,
+}
+
+impl AsyncVerificationEngine {
+    pub fn new(policy: VerificationPolicy) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(VerificationEngine::new(policy))),
+        }
+    }
+
+    pub fn arc(&self) -> Arc<RwLock<VerificationEngine>> {
+        self.inner.clone()
+    }
+
+    /// Sample a job for verification (async)
+    pub async fn sample_job(
+        &self,
+        job_id: [u8; 32],
+        operator_id: [u8; 32],
+        input_hash: [u8; 32],
+        output_hash: [u8; 32],
+    ) -> bool {
+        self.inner.write().await.sample_job(job_id, operator_id, input_hash, output_hash)
+    }
+
+    /// Record verification result (async)
+    pub async fn record_result(
+        &self,
+        job_id: &[u8; 32],
+        result: VerificationResult,
+    ) -> Result<VerificationStatus, VerificationError> {
+        self.inner.write().await.record_verification_result(job_id, result)
+    }
+
+    /// Create dispute (async)
+    pub async fn create_dispute(
+        &self,
+        job_id: [u8; 32],
+        challenger_id: [u8; 32],
+        accused_operator_id: [u8; 32],
+    ) -> Result<Dispute, VerificationError> {
+        self.inner.write().await.create_dispute(job_id, challenger_id, accused_operator_id)
+    }
+
+    /// Get metrics (async)
+    pub async fn get_metrics(&self) -> VerificationMetrics {
+        self.inner.read().await.get_metrics()
+    }
+
+    /// Get pending verifications (async)
+    pub async fn get_pending(&self) -> Option<VerificationJob> {
+        self.inner.write().await.next_verification()
+    }
+}
+
+impl Default for AsyncVerificationEngine {
+    fn default() -> Self {
+        Self::new(VerificationPolicy::default())
+    }
 }
 
 #[cfg(test)]
