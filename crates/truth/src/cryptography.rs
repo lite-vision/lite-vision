@@ -27,7 +27,10 @@ impl KeyPair {
     }
 
     pub fn verify(&self, message: &[u8], signature: &[u8; 64]) -> bool {
-        let sig = Signature::from_slice(signature).unwrap();
+        let sig = match Signature::from_slice(signature) {
+            Ok(sig) => sig,
+            Err(_) => return false,
+        };
         self.verifying_key.verify(message, &sig).is_ok()
     }
 
@@ -61,7 +64,10 @@ pub fn verify_signature(pubkey: &[u8; 32], message: &[u8], signature: &[u8; 64])
 }
 
 pub fn hash_serializable<T: Serialize>(value: &T) -> [u8; 32] {
-    let encoded = bincode::serialize(value).unwrap();
+    let encoded = match bincode::serialize(value) {
+        Ok(encoded) => encoded,
+        Err(_) => return [0u8; 32],
+    };
     hash(&encoded)
 }
 
@@ -70,7 +76,10 @@ pub fn verify_serializable_signature<T: Serialize>(
     value: &T,
     signature: &[u8; 64],
 ) -> bool {
-    let encoded = bincode::serialize(value).unwrap();
+    let encoded = match bincode::serialize(value) {
+        Ok(encoded) => encoded,
+        Err(_) => return false,
+    };
     verify_signature(pubkey, &encoded, signature)
 }
 

@@ -327,34 +327,125 @@ impl JobResult {
     }
 }
 
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
 pub struct JobExecutor {
+    inner: Arc<RwLock<JobExecutorInner>>,
+}
+
+struct JobExecutorInner {
     pub jobs: std::collections::HashMap<[u8; 32], Job>,
+    pub receipts: std::collections::HashMap<[u8; 32], crate::receipts::Receipt>,
     kernel_executor: Option<KernelExecutor>,
     kernel_registry: KernelRegistry,
-    /// Associated verification engine for sampling jobs
     pub verification_engine: Option<VerificationEngine>,
+    capacity: usize,
 }
 
 impl JobExecutor {
-    pub fn new() -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            jobs: std::collections::HashMap::new(),
-            kernel_executor: None,
-            kernel_registry: KernelRegistry::new(),
-            verification_engine: None,
+            inner: Arc::new(RwLock::new(JobExecutorInner {
+                jobs: std::collections::HashMap::new(),
+                receipts: std::collections::HashMap::new(),
+                kernel_executor: None,
+                kernel_registry: KernelRegistry::new(),
+                verification_engine: None,
+                capacity,
+            })),
         }
     }
 
     /// Create JobExecutor with a verification engine
-    pub fn with_verification(policy: crate::verification::VerificationPolicy) -> Self {
+    pub fn with_verification(capacity: usize, policy: crate::verification::VerificationPolicy) -> Self {
         Self {
-            jobs: std::collections::HashMap::new(),
-            kernel_executor: None,
-            kernel_registry: KernelRegistry::new(),
-            verification_engine: Some(VerificationEngine::new(policy)),
+            inner: Arc::new(RwLock::new(JobExecutorInner {
+                jobs: std::collections::HashMap::new(),
+                receipts: std::collections::HashMap::new(),
+                kernel_executor: None,
+                kernel_registry: KernelRegistry::new(),
+                verification_engine: Some(VerificationEngine::new(policy)),
+                capacity,
+            })),
         }
     }
 
+    pub async fn submit(&self, job: Job) -> Result<crate::receipts::Receipt, JobError> {
+        let mut inner = self.inner.write().await;
+        if inner.jobs.len() >= inner.capacity {
+            return Err(JobError::CapacityExceeded);
+        }
+
+        let job_id = job.ticket.job_id;
+        inner.jobs.insert(job_id, job.clone());
+
+        let execution_mode = match job.ticket.execution_mode {
+            ExecutionMode::Soft => crate::receipts::ExecutionMode::Soft,
+            ExecutionMode::Deterministic => crate::receipts::ExecutionMode::Deterministic,
+        };
+
+        // Create initial receipt using receipts::Receipt::new
+        let receipt = crate::receipts::Receipt::new(
+            job_id,
+            [0u8; 32], // Operator to be assigned
+            job.ticket.kernel_id,
+            (1, 0, 0), // Kernel version placeholder
+            job.ticket.input_hash,
+            [0u8; 32], // Output to be computed
+            &crate::receipts::ResourceUsage::default(),
+            execution_mode,
+            0,
+            0,
+        );
+
+        inner.receipts.insert(job_id, receipt.clone());
+        Ok(receipt)
+    }
+
+    pub async fn submit_job(&self, ticket: JobTicket, block_height: u64) -> Result<[u8; 32], JobError> {
+        let job = Job::from_ticket(ticket, block_height);
+        let job_id = job.ticket.job_id;
+        self.submit(job).await.map(|_| job_id)
+    }
+
+    pub async fn get_job(&self, job_id: [u8; 32]) -> Option<Job> {
+        let inner = self.inner.read().await;
+        inner.jobs.get(&job_id).cloned()
+    }
+
+    pub async fn get_receipt(&self, job_id: [u8; 32]) -> Option<crate::receipts::Receipt> {
+        let inner = self.inner.read().await;
+        inner.receipts.get(&job_id).cloned()
+    }
+
+    pub async fn assign_job(&self, job_id: &[u8; 32], operator_id: [u8; 32], block_height: u64) -> Result<(), JobError> {
+        let mut inner = self.inner.write().await;
+        inner.assign_job(job_id, operator_id, block_height)
+    }
+
+    pub async fn complete_job(&self, job_id: &[u8; 32], result: JobResult, block_height: u64) -> Result<u64, JobError> {
+        let mut inner = self.inner.write().await;
+        inner.complete_job(job_id, result, block_height)
+    }
+
+    pub async fn get_pending_jobs(&self) -> Vec<Job> {
+        let inner = self.inner.read().await;
+        inner.get_pending_jobs()
+    }
+
+    pub async fn get_jobs_by_operator(&self, operator_id: &[u8; 32]) -> Vec<Job> {
+        let inner = self.inner.read().await;
+        inner.get_jobs_by_operator(operator_id)
+    }
+
+    pub async fn get_jobs_by_client(&self, client_id: &[u8; 32]) -> Vec<Job> {
+        let inner = self.inner.read().await;
+        inner.get_jobs_by_client(client_id)
+    }
+}
+
+impl JobExecutorInner {
     /// Schedule a job for verification sampling
     pub fn schedule_verification(
         &mut self,
@@ -606,35 +697,39 @@ impl JobExecutor {
         expired
     }
 
-    pub fn get_pending_jobs(&self) -> Vec<&Job> {
+    pub fn get_pending_jobs(&self) -> Vec<Job> {
         self.jobs
             .values()
-            .filter(|j| j.status == JobStatus::Pending)
+            .filter(|j| matches!(j.status, JobStatus::Pending))
+            .cloned()
             .collect()
     }
 
-    pub fn get_jobs_by_operator(&self, operator_id: &[u8; 32]) -> Vec<&Job> {
+    pub fn get_jobs_by_operator(&self, operator_id: &[u8; 32]) -> Vec<Job> {
         self.jobs
             .values()
             .filter(|j| j.assigned_operator == Some(*operator_id))
+            .cloned()
             .collect()
     }
 
-    pub fn get_jobs_by_client(&self, client_id: &[u8; 32]) -> Vec<&Job> {
+
+    pub fn get_jobs_by_client(&self, client_id: &[u8; 32]) -> Vec<Job> {
         self.jobs
             .values()
             .filter(|j| j.ticket.client_id == *client_id)
+            .cloned()
             .collect()
     }
 }
 
 impl Default for JobExecutor {
     fn default() -> Self {
-        Self::new()
+        Self::new(1000)
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JobError {
     JobNotFound,
     JobAlreadyExists,
@@ -642,6 +737,8 @@ pub enum JobError {
     BudgetExceeded,
     DeadlineExceeded,
     OperatorNotFound,
+    CapacityExceeded,
+    JobExecutionFailed(String),
 }
 
 /// Errors that can occur during job execution
@@ -799,27 +896,30 @@ mod tests {
         assert_eq!(job.status, JobStatus::Expired);
     }
 
-    #[test]
-    fn test_job_executor_submit() {
-        let mut executor = JobExecutor::new();
+    #[tokio::test]
+    async fn test_job_executor_submit() {
+        let executor = JobExecutor::new(100);
 
         let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 100);
 
-        let job_id = executor.submit_job(ticket, 10).unwrap();
+        let receipt = executor.submit(Job::from_ticket(ticket, 10)).await.unwrap();
+        let job_id = receipt.job_id;
 
-        let job = executor.get_job(&job_id).unwrap();
+        let job = executor.get_job(job_id).await.unwrap();
         assert_eq!(job.status, JobStatus::Pending);
     }
 
-    #[test]
-    fn test_job_executor_complete() {
-        let mut executor = JobExecutor::new();
+    #[tokio::test]
+    async fn test_job_executor_complete() {
+        let executor = JobExecutor::new(100);
 
         let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 100);
+        let job = Job::from_ticket(ticket, 10);
+        let job_id = job.ticket.job_id;
 
-        let job_id = executor.submit_job(ticket.clone(), 10).unwrap();
+        executor.submit(job).await.unwrap();
 
-        executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
+        executor.assign_job(&job_id, [5u8; 32], 15).await.unwrap();
 
         let cost = ExecutionCost {
             total_fee: 600,
@@ -831,23 +931,25 @@ mod tests {
 
         let result = JobResult::new([7u8; 32], cost.clone());
 
-        let refund = executor.complete_job(&job_id, result, 20).unwrap();
+        let refund = executor.complete_job(&job_id, result, 20).await.unwrap();
 
         assert_eq!(refund, 400);
 
-        let job = executor.get_job(&job_id).unwrap();
+        let job = executor.get_job(job_id).await.unwrap();
         assert_eq!(job.status, JobStatus::Completed);
     }
 
-    #[test]
-    fn test_job_executor_budget_exceeded() {
-        let mut executor = JobExecutor::new();
+    #[tokio::test]
+    async fn test_job_executor_budget_exceeded() {
+        let executor = JobExecutor::new(100);
 
         let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 100);
+        let job = Job::from_ticket(ticket, 10);
+        let job_id = job.ticket.job_id;
 
-        let job_id = executor.submit_job(ticket, 10).unwrap();
+        executor.submit(job).await.unwrap();
 
-        executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
+        executor.assign_job(&job_id, [5u8; 32], 15).await.unwrap();
 
         let cost = ExecutionCost {
             total_fee: 1500,
@@ -859,37 +961,39 @@ mod tests {
 
         let result = JobResult::new([7u8; 32], cost.clone());
 
-        let result_err = executor.complete_job(&job_id, result, 20);
+        let result_err = executor.complete_job(&job_id, result, 20).await;
 
         assert!(matches!(result_err, Err(JobError::BudgetExceeded)));
     }
 
-    #[test]
-    fn test_get_pending_jobs() {
-        let mut executor = JobExecutor::new();
+    #[tokio::test]
+    async fn test_get_pending_jobs() {
+        let executor = JobExecutor::new(100);
 
         let ticket1 = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 100);
         let ticket2 = JobTicket::new([1u8; 32], [3u8; 32], [4u8; 32], Budget::new(1000), 100);
 
-        executor.submit_job(ticket1, 10).unwrap();
-        executor.submit_job(ticket2, 10).unwrap();
+        executor.submit(Job::from_ticket(ticket1, 10)).await.unwrap();
+        executor.submit(Job::from_ticket(ticket2, 10)).await.unwrap();
 
-        let pending = executor.get_pending_jobs();
+        let pending = executor.get_pending_jobs().await;
 
         assert_eq!(pending.len(), 2);
     }
 
-    #[test]
-    fn test_get_jobs_by_operator() {
-        let mut executor = JobExecutor::new();
+    #[tokio::test]
+    async fn test_get_jobs_by_operator() {
+        let executor = JobExecutor::new(100);
 
         let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 100);
+        let job = Job::from_ticket(ticket, 10);
+        let job_id = job.ticket.job_id;
 
-        let job_id = executor.submit_job(ticket, 10).unwrap();
+        executor.submit(job).await.unwrap();
 
-        executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
+        executor.assign_job(&job_id, [5u8; 32], 15).await.unwrap();
 
-        let jobs = executor.get_jobs_by_operator(&[5u8; 32]);
+        let jobs = executor.get_jobs_by_operator(&[5u8; 32]).await;
 
         assert_eq!(jobs.len(), 1);
     }

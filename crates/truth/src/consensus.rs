@@ -59,7 +59,11 @@ impl Vote {
     pub fn hash(&self) -> [u8; 32] {
         use blake3::Hasher;
         let mut hasher = Hasher::new();
-        hasher.update(&bincode::serialize(self).unwrap());
+        let encoded = match bincode::serialize(self) {
+            Ok(encoded) => encoded,
+            Err(_) => return [0u8; 32],
+        };
+        hasher.update(&encoded);
         *hasher.finalize().as_bytes()
     }
 }
@@ -109,7 +113,11 @@ impl QuorumCertificate {
     pub fn hash(&self) -> [u8; 32] {
         use blake3::Hasher;
         let mut hasher = Hasher::new();
-        hasher.update(&bincode::serialize(self).unwrap());
+        let encoded = match bincode::serialize(self) {
+            Ok(encoded) => encoded,
+            Err(_) => return [0u8; 32],
+        };
+        hasher.update(&encoded);
         *hasher.finalize().as_bytes()
     }
 }

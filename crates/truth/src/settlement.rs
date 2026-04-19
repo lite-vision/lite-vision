@@ -38,7 +38,8 @@ impl JobEscrow {
         current_block: u64,
         deadline_blocks: u64,
     ) -> Self {
-        let verifier_reserve = (amount * verifier_reserve_percent) / 10000;
+        // Use saturating_mul to prevent overflow on arithmetic
+        let verifier_reserve = amount.saturating_mul(verifier_reserve_percent) / 10000;
         Self {
             job_id,
             client_id,
@@ -46,7 +47,7 @@ impl JobEscrow {
             reserved_for_verification: verifier_reserve,
             status: EscrowStatus::Active,
             created_at_block: current_block,
-            deadline_block: current_block + deadline_blocks,
+            deadline_block: current_block.saturating_add(deadline_blocks),
         }
     }
 

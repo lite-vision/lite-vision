@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use crate::block::Transaction;
 use crate::settlement::{EscrowStatus, OperatorRegistrationStatus, OperatorState, SettlementState};
-use crate::transaction::TransactionType;
+use crate::transaction::{TransactionType, TxError};
 
 pub const STATE_VERSION: u64 = 2; // Version 2 - Settlement-based
 
@@ -128,7 +128,33 @@ impl State {
     }
 
     pub fn apply_transaction(&mut self, tx: &Transaction) -> Result<Option<Receipt>, StateError> {
+        // First verify the transaction format
         tx.verify().map_err(|_| StateError::InvalidTransaction)?;
+
+        // For transactions that modify state (not just reads), verify authorization
+        // Skip authorization for GovernanceVote and legacy Transfer types
+        if !matches!(
+            tx.tx_type,
+            TransactionType::GovernanceVote | TransactionType::Transfer
+        ) {
+            // Get the sender's public key from the operator registry if they exist
+            let sender_pubkey = self
+                .settlement
+                .operator_registry
+                .get(&tx.sender)
+                .map(|op| op.pubkey)
+                .unwrap_or([0u8; 32]); // Default to zero if not registered
+
+            // For transactions that require authorization (non-zero signature)
+            // We verify the signature if provided
+            if !tx.signature.is_empty() {
+                // If sender is registered, verify their signature
+                if sender_pubkey != [0u8; 32] {
+                    tx.verify_authorization(&sender_pubkey)
+                        .map_err(|_| StateError::InvalidTransaction)?;
+                }
+            }
+        }
 
         match &tx.tx_type {
             // Job lifecycle

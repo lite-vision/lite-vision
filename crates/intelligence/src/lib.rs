@@ -35,6 +35,6 @@ pub use kernel::{KernelSpec, KernelParam, KernelInput, KernelOutput, KernelExecu
 pub use verification::VerificationEngine;
 
 /// Dispute Resolver - Fraud proof handling
-pub use dispute::DisputeEngine;
+pub use dispute::{DisputeEngine, DisputeManager};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");

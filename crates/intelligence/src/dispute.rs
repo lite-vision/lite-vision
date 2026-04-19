@@ -14,6 +14,15 @@ pub struct FraudProof {
     pub challenger_signature: Vec<u8>,
 }
 
+impl FraudProof {
+    pub fn hash(&self) -> [u8; 32] {
+        use blake3::Hasher;
+        let mut hasher = Hasher::new();
+        hasher.update(&bincode::serialize(self).unwrap());
+        *hasher.finalize().as_bytes()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvidenceBundle {
     pub kernel_binary_hash: [u8; 32],
@@ -837,5 +846,60 @@ mod tests {
 
         assert!(proof.evidence_bundle.execution_logs.is_empty());
         assert_eq!(proof.evidence_bundle.resource_metrics.gpu_cycles, 5000);
+    }
+}
+
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+pub struct DisputeManager {
+    engine: Arc<RwLock<DisputeEngine>>,
+}
+
+impl DisputeManager {
+    pub fn new(engine: DisputeEngine) -> Self {
+        Self {
+            engine: Arc::new(RwLock::new(engine)),
+        }
+    }
+
+    pub async fn initiate_dispute(
+        &self,
+        job_id: [u8; 32],
+        receipt_hash: [u8; 32],
+        fraud_proof: FraudProof,
+        challenger_id: [u8; 32],
+        challenger_bond: u64,
+        current_block: u64,
+        receipt_block: u64,
+        verification_window_blocks: u64,
+    ) -> Result<[u8; 32], DisputeError> {
+        let mut engine = self.engine.write().await;
+        engine.initiate_dispute(
+            job_id,
+            receipt_hash,
+            fraud_proof,
+            challenger_id,
+            challenger_bond,
+            current_block,
+            receipt_block,
+            verification_window_blocks,
+        )
+    }
+
+    pub async fn resolve_dispute(
+        &self,
+        dispute_id: &[u8; 32],
+        job_budget: u64,
+        verification_cost: u64,
+        current_block: u64,
+    ) -> Result<DisputeResolution, DisputeError> {
+        let mut engine = self.engine.write().await;
+        engine.resolve_dispute(dispute_id, job_budget, verification_cost, current_block)
+    }
+
+    pub async fn get_dispute(&self, dispute_id: &[u8; 32]) -> Option<Dispute> {
+        let engine = self.engine.read().await;
+        engine.get_dispute(dispute_id).cloned()
     }
 }

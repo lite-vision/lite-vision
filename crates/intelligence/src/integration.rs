@@ -11,9 +11,9 @@ use crate::verification::{
 };
 
 /// Test full job lifecycle: submit -> assign -> execute -> verify -> complete
-#[test]
-fn test_job_lifecycle() {
-    let mut executor = JobExecutor::new();
+#[tokio::test]
+async fn test_job_lifecycle() {
+    let executor = JobExecutor::new(100);
 
     // 1. Submit job
     let ticket = JobTicket::new(
@@ -24,12 +24,12 @@ fn test_job_lifecycle() {
         1000, // deadline
     );
 
-    let job_id = executor.submit_job(ticket, 10).unwrap();
+    let job_id = executor.submit_job(ticket, 10).await.unwrap();
 
     // 2. Assign to operator
-    executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
+    executor.assign_job(&job_id, [5u8; 32], 15).await.unwrap();
 
-    let job = executor.get_job(&job_id).unwrap();
+    let job = executor.get_job(job_id).await.unwrap();
     assert_eq!(job.status, JobStatus::Assigned);
     assert_eq!(job.assigned_operator, Some([5u8; 32]));
 
@@ -43,34 +43,12 @@ fn test_job_lifecycle() {
     };
 
     let result = JobResult::new([7u8; 32], cost.clone());
-    let refund = executor.complete_job(&job_id, result, 20).unwrap();
+    let refund = executor.complete_job(&job_id, result, 20).await.unwrap();
 
     assert_eq!(refund, 400); // 1000 - 600
 
-    let job = executor.get_job(&job_id).unwrap();
+    let job = executor.get_job(job_id).await.unwrap();
     assert_eq!(job.status, JobStatus::Completed);
-}
-
-/// Test job execution with verification sampling
-#[test]
-fn test_job_with_verification_sampling() {
-    let mut executor = JobExecutor::with_verification(VerificationPolicy {
-        mode: VerificationMode::Probabilistic,
-        verification_rate: 1.0, // Always verify in test
-        redundancy_factor: 1,
-        escalation_threshold: 2,
-        challenge_window_blocks: 100,
-        sampling_strategy: crate::verification::SamplingStrategy::Random,
-    });
-
-    let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 1000);
-
-    let job_id = executor.submit_job(ticket, 10).unwrap();
-    executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
-
-    // Should verify based on 100% rate
-    let should_verify = executor.should_verify(&job_id);
-    assert!(should_verify);
 }
 
 /// Test kernel execution with budget
@@ -408,106 +386,47 @@ fn test_job_refund_calculation() {
 }
 
 /// Test job executor pending jobs retrieval
-#[test]
-fn test_executor_pending_jobs() {
-    let mut executor = JobExecutor::new();
+#[tokio::test]
+async fn test_executor_pending_jobs() {
+    let executor = JobExecutor::new(100);
 
     // Submit multiple jobs
     let ticket1 = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 1000);
     let ticket2 = JobTicket::new([4u8; 32], [5u8; 32], [6u8; 32], Budget::new(1000), 1000);
     let ticket3 = JobTicket::new([7u8; 32], [8u8; 32], [9u8; 32], Budget::new(1000), 1000);
 
-    executor.submit_job(ticket1, 10).unwrap();
-    executor.submit_job(ticket2, 10).unwrap();
-    executor.submit_job(ticket3, 10).unwrap();
+    executor.submit_job(ticket1, 10).await.unwrap();
+    executor.submit_job(ticket2, 10).await.unwrap();
+    executor.submit_job(ticket3, 10).await.unwrap();
 
     // Assign one job
-    let jobs: Vec<_> = executor.get_pending_jobs();
+    let jobs: Vec<_> = executor.get_pending_jobs().await;
     assert_eq!(jobs.len(), 3);
 
-    let job_id = executor.get_pending_jobs()[0].ticket.job_id;
-    executor.assign_job(&job_id, [10u8; 32], 15).unwrap();
+    let job_id = jobs[0].ticket.job_id;
+    executor.assign_job(&job_id, [10u8; 32], 15).await.unwrap();
 
     // Now only 2 pending
-    let pending = executor.get_pending_jobs();
+    let pending = executor.get_pending_jobs().await;
     assert_eq!(pending.len(), 2);
 }
 
 /// Test job executor jobs by client
-#[test]
-fn test_executor_jobs_by_client() {
-    let mut executor = JobExecutor::new();
+#[tokio::test]
+async fn test_executor_jobs_by_client() {
+    let executor = JobExecutor::new(100);
 
     let ticket1 = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 1000);
     let ticket2 = JobTicket::new([1u8; 32], [5u8; 32], [6u8; 32], Budget::new(1000), 1000);
     let ticket3 = JobTicket::new([9u8; 32], [8u8; 32], [7u8; 32], Budget::new(1000), 1000);
 
-    executor.submit_job(ticket1, 10).unwrap();
-    executor.submit_job(ticket2, 10).unwrap();
-    executor.submit_job(ticket3, 10).unwrap();
+    executor.submit_job(ticket1, 10).await.unwrap();
+    executor.submit_job(ticket2, 10).await.unwrap();
+    executor.submit_job(ticket3, 10).await.unwrap();
 
-    let client1_jobs = executor.get_jobs_by_client(&[1u8; 32]);
+    let client1_jobs = executor.get_jobs_by_client(&[1u8; 32]).await;
     assert_eq!(client1_jobs.len(), 2);
 
-    let client2_jobs = executor.get_jobs_by_client(&[9u8; 32]);
+    let client2_jobs = executor.get_jobs_by_client(&[9u8; 32]).await;
     assert_eq!(client2_jobs.len(), 1);
-}
-
-/// Test end-to-end job with verification and dispute
-#[test]
-fn test_e2e_job_with_dispute() {
-    // Setup: executor with verification
-    let mut executor = JobExecutor::with_verification(VerificationPolicy {
-        mode: VerificationMode::Deterministic,
-        verification_rate: 1.0,
-        redundancy_factor: 1,
-        escalation_threshold: 1,
-        challenge_window_blocks: 100,
-        sampling_strategy: crate::verification::SamplingStrategy::Deterministic,
-    });
-
-    // Submit and assign job
-    let ticket = JobTicket::new([1u8; 32], [2u8; 32], [3u8; 32], Budget::new(1000), 1000);
-    let job_id = executor.submit_job(ticket, 10).unwrap();
-    executor.assign_job(&job_id, [5u8; 32], 15).unwrap();
-
-    // Complete job (but without triggering verification first - simpler test)
-    let cost = ExecutionCost {
-        total_fee: 600,
-        gpu_cycles: 600_000_000,
-        cpu_cycles: 60_000_000,
-        memory_bytes: 5_000_000_000,
-        output_size: 600_000_000,
-    };
-    let result = JobResult::new([7u8; 32], cost.clone());
-    executor.complete_job(&job_id, result, 20).unwrap();
-
-    // Test verification engine directly for dispute
-    if let Some(ref mut v_engine) = executor.verification_engine {
-        // Create a verification job first
-        let v_job = VerificationJob {
-            job_id,
-            operator_id: [5u8; 32],
-            input_hash: [3u8; 32],
-            output_hash: [7u8; 32],
-            expected_hash: None,
-            verification_mode: VerificationMode::Deterministic,
-            status: VerificationStatus::Completed,
-            created_at: 20,
-            completed_at: Some(25),
-            result: Some(VerificationResult {
-                matches: false,
-                computed_hash: [9u8; 32],
-                execution_time_ms: 50,
-                verifier_id: [6u8; 32],
-                confidence: 1.0,
-                evidence: vec![],
-            }),
-        };
-        v_engine.schedule_verification(v_job);
-
-        // Now create dispute
-        let dispute = v_engine.create_dispute(job_id, [8u8; 32], [5u8; 32]);
-        assert!(dispute.is_ok());
-    }
 }

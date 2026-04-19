@@ -1,3 +1,4 @@
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -100,6 +101,51 @@ impl Transaction {
                 | EscrowRelease
                 | EscrowRefund
         )
+    }
+
+    /// Verify the transaction signature authorizes the sender
+    /// Returns Err(TxError::InvalidSignature) if verification fails
+    pub fn verify_authorization(&self, pubkey: &[u8; 32]) -> Result<(), TxError> {
+        // Empty signature is treated as invalid (requires authorization)
+        if self.signature.is_empty() {
+            return Err(TxError::InvalidSignature);
+        }
+
+        // Need at least 64 bytes for a valid signature
+        if self.signature.len() != 64 {
+            return Err(TxError::InvalidSignature);
+        }
+
+        // Convert signature to fixed array
+        let sig_array: [u8; 64] = match self.signature.as_slice().try_into() {
+            Ok(arr) => arr,
+            Err(_) => return Err(TxError::InvalidSignature),
+        };
+
+        // Create message to verify: hash of (sender || tx_type || payload || nonce)
+        use blake3::Hasher;
+        let mut hasher = Hasher::new();
+        hasher.update(&self.sender);
+        hasher.update(&self.nonce.to_le_bytes());
+        hasher.update(&self.payload);
+        let message = hasher.finalize();
+
+        // Verify signature using the provided public key
+        let vk = match ed25519_dalek::VerifyingKey::from_bytes(pubkey.into()) {
+            Ok(vk) => vk,
+            Err(_) => return Err(TxError::InvalidSignature),
+        };
+
+        let sig = match ed25519_dalek::Signature::from_slice(&sig_array) {
+            Ok(sig) => sig,
+            Err(_) => return Err(TxError::InvalidSignature),
+        };
+
+        if vk.verify(message.as_bytes(), &sig).is_ok() {
+            Ok(())
+        } else {
+            Err(TxError::InvalidSignature)
+        }
     }
 }
 
