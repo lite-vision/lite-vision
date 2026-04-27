@@ -17,4 +17,5 @@ futures = { workspace = true }
 blake3 = { workspace = true }
 rand = { workspace = true }
 bincode = { workspace = true }
+ed25519-dalek = { workspace = true }
 lite-vision-core = { workspace = true }

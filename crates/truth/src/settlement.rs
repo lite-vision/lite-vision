@@ -55,7 +55,7 @@ impl JobEscrow {
         self.amount.saturating_sub(self.reserved_for_verification)
     }
 
-    pub fn release(&mut self, to: [u8; 32]) -> u64 {
+    pub fn release(&mut self, _to: [u8; 32]) -> u64 {
         if self.status != EscrowStatus::Active {
             return 0;
         }
@@ -296,7 +296,7 @@ impl ReceiptAnchor {
         }
     }
 
-    pub fn verify(&mut self, verifier_id: [u8; 32], current_block: u64) {
+    pub fn verify(&mut self, _verifier_id: [u8; 32], _current_block: u64) {
         self.status = ReceiptStatus::Verified;
     }
 

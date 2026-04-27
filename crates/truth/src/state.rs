@@ -2,8 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::block::Transaction;
-use crate::settlement::{EscrowStatus, OperatorRegistrationStatus, OperatorState, SettlementState};
-use crate::transaction::{TransactionType, TxError};
+use crate::settlement::{OperatorRegistrationStatus, OperatorState, SettlementState};
+use crate::transaction::TransactionType;
 
 pub const STATE_VERSION: u64 = 2; // Version 2 - Settlement-based
 
@@ -269,7 +269,7 @@ impl State {
             return Err(StateError::InvalidTransaction);
         }
 
-        let content_hash: [u8; 32] = tx.payload[0..32].try_into().unwrap();
+        let _content_hash: [u8; 32] = tx.payload[0..32].try_into().unwrap();
 
         // Artifact commitment happens via state - the hash is stored
         // Actual content stored in separate storage layer

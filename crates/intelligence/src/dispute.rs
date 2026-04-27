@@ -144,11 +144,17 @@ impl Default for SlashDistribution {
 }
 
 pub struct DisputeEngine {
+    #[allow(dead_code)]
     min_challenger_bond: u64,
+    #[allow(dead_code)]
     governance_min_slash: u64,
+    #[allow(dead_code)]
     slash_alpha_ratio: u64,
+    #[allow(dead_code)]
     slash_beta_ratio: u64,
+    #[allow(dead_code)]
     adjudication_window_blocks: u64,
+    #[allow(dead_code)]
     default_verification_window: u64,
     slash_distribution: SlashDistribution,
     disputes: HashMap<[u8; 32], Dispute>,

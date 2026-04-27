@@ -1,5 +1,6 @@
+use ed25519_dalek::{Signature, Verifier, VerifyingKey, SIGNATURE_LENGTH};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PartitionStatus {
@@ -69,7 +70,62 @@ pub struct PartitionCreate {
 
 impl PartitionCreate {
     pub fn verify_signatures(&self, validators: &[[u8; 32]]) -> bool {
-        self.signatures.len() >= (validators.len() * 2) / 3
+        // First check quorum requirement
+        let quorum_required = (validators.len() * 2) / 3;
+        if self.signatures.len() < quorum_required {
+            return false;
+        }
+
+        // Build a set of valid validator public keys for quick lookup
+        let valid_keys: std::collections::HashSet<&[u8; 32]> = validators.iter().collect();
+
+        // Generate the message that was signed
+        let message = self.message_to_sign();
+
+        // Verify each signature cryptographically
+        let mut verified_count = 0;
+        for (public_key_bytes, signature_bytes) in &self.signatures {
+            // Verify this public key is from a valid validator
+            if !valid_keys.contains(public_key_bytes) {
+                continue;
+            }
+
+            // Verify signature has correct length
+            if signature_bytes.len() != SIGNATURE_LENGTH {
+                continue;
+            }
+
+            // Parse the signature
+            let signature = match Signature::from_slice(signature_bytes) {
+                Ok(sig) => sig,
+                Err(_) => continue,
+            };
+
+            // Parse the public key
+            let verifying_key = match VerifyingKey::from_bytes(public_key_bytes) {
+                Ok(key) => key,
+                Err(_) => continue,
+            };
+
+            // Verify the signature against the message
+            if verifying_key.verify(&message, &signature).is_ok() {
+                verified_count += 1;
+            }
+        }
+
+        // Require quorum of verified signatures
+        verified_count >= quorum_required
+    }
+
+    /// Generate the message that was signed (the data being authenticated)
+    fn message_to_sign(&self) -> [u8; 32] {
+        use blake3::Hasher;
+        let mut hasher = Hasher::new();
+        hasher.update(&self.new_partition_id.to_le_bytes());
+        hasher.update(&self.initial_state_root);
+        hasher.update(&self.configuration_hash);
+        hasher.update(&self.governance_proposal_id);
+        *hasher.finalize().as_bytes()
     }
 }
 
@@ -93,7 +149,50 @@ pub struct MigrationProof {
 
 impl MigrationProof {
     pub fn verify(&self) -> bool {
-        !self.validator_signatures.is_empty()
+        // Must have at least one signature for a valid proof
+        if self.validator_signatures.is_empty() {
+            return false;
+        }
+
+        // Generate the message that was signed (the migration data)
+        let message = self.message_to_sign();
+
+        // Verify each signature cryptographically
+        for (public_key_bytes, signature_bytes) in &self.validator_signatures {
+            // Verify signature has correct length
+            if signature_bytes.len() != SIGNATURE_LENGTH {
+                return false;
+            }
+
+            // Parse the signature
+            let signature = match Signature::from_slice(signature_bytes) {
+                Ok(sig) => sig,
+                Err(_) => return false,
+            };
+
+            // Parse the public key
+            let verifying_key = match VerifyingKey::from_bytes(public_key_bytes) {
+                Ok(key) => key,
+                Err(_) => return false,
+            };
+
+            // Verify the signature
+            if verifying_key.verify(&message, &signature).is_err() {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Generate the message that was signed (the migration data)
+    fn message_to_sign(&self) -> [u8; 32] {
+        use blake3::Hasher;
+        let mut hasher = Hasher::new();
+        hasher.update(&self.source_state_root);
+        hasher.update(&self.target_state_root);
+        hasher.update(&self.migration_merkle_root);
+        *hasher.finalize().as_bytes()
     }
 }
 

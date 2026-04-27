@@ -71,6 +71,7 @@ impl Vote {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuorumCertificate {
     pub block_hash: [u8; 32],
+    #[allow(dead_code)]
     pub height: u64,
     pub round: u32,
     pub vote_type: VoteType,

@@ -337,8 +337,11 @@ pub struct JobExecutor {
 struct JobExecutorInner {
     pub jobs: std::collections::HashMap<[u8; 32], Job>,
     pub receipts: std::collections::HashMap<[u8; 32], crate::receipts::Receipt>,
+    #[allow(dead_code)]
     kernel_executor: Option<KernelExecutor>,
+    #[allow(dead_code)]
     kernel_registry: KernelRegistry,
+    #[allow(dead_code)]
     pub verification_engine: Option<VerificationEngine>,
     capacity: usize,
 }

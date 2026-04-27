@@ -17,20 +17,18 @@ pub mod settlement; // NEW - Economic settlement primitives
 #[cfg(test)]
 pub mod integration; // Integration tests
 
-pub use consensus::*;
-pub use state::*;
-pub use validator::*;
-pub use block::*;
-pub use transaction::*;
+pub use consensus::{ConsensusState, Vote, VoteType, QuorumCertificate};
+pub use state::State;
+pub use validator_set::{ValidatorSet, Validator, ValidatorStatus, ValidatorMetadata};
+pub use block::{Block, BlockHeader};
+pub use transaction::{Transaction, TransactionType, TxError};
 pub use cryptography::*;
-pub use governance::*;
-pub use storage::*;
-pub use messaging::*;
-pub use cross_partition::*;
-pub use validator_set::*;
+pub use storage::Storage;
+pub use messaging::Message;
+pub use cross_partition::GlobalStateRoot;
 pub use rpc::*;
 pub use sync::*;
 pub use pruning::*;
-pub use settlement::*; // NEW
+pub use settlement::{SettlementState, JobEscrow, SlashingConditions};
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

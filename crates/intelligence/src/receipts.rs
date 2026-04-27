@@ -1,3 +1,4 @@
+use ed25519_dalek::{Signature, Verifier, VerifyingKey, SIGNATURE_LENGTH};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -112,8 +113,40 @@ impl Receipt {
         *hasher.finalize().as_bytes()
     }
 
-    pub fn verify_signature(&self, _public_key: &[u8]) -> bool {
-        !self.signature.is_empty()
+    pub fn verify_signature(&self, public_key: &[u8]) -> bool {
+        // Reject empty signatures
+        if self.signature.is_empty() {
+            return false;
+        }
+
+        // Verify public key is valid (32 bytes)
+        if public_key.len() != 32 {
+            return false;
+        }
+
+        // Verify signature has correct length
+        if self.signature.len() != SIGNATURE_LENGTH {
+            return false;
+        }
+
+        // Parse the public key
+        let verifying_key =
+            match VerifyingKey::from_bytes(public_key.try_into().unwrap_or(&[0u8; 32])) {
+                Ok(key) => key,
+                Err(_) => return false,
+            };
+
+        // Parse the signature
+        let signature = match Signature::from_slice(&self.signature) {
+            Ok(sig) => sig,
+            Err(_) => return false,
+        };
+
+        // Generate the message that was signed
+        let message = self.hash();
+
+        // Verify the signature cryptographically
+        verifying_key.verify(&message, &signature).is_ok()
     }
 }
 

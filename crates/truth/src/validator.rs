@@ -214,7 +214,7 @@ impl ValidatorSet {
         }
     }
 
-    pub fn add(&mut self, mut validator: Validator) -> Result<(), String> {
+    pub fn add(&mut self, validator: Validator) -> Result<(), String> {
         if self.validators.len() >= MAX_VALIDATORS {
             return Err("Maximum validator count reached".to_string());
         }
@@ -365,7 +365,7 @@ impl ValidatorSet {
         block_hash1 != block_hash2 && self.get(validator_id).is_some()
     }
 
-    pub fn check_equivocation(&self, validator_id: &[u8; 32], height: u64, round: u32) -> bool {
+    pub fn check_equivocation(&self, validator_id: &[u8; 32], _height: u64, _round: u32) -> bool {
         self.get(validator_id).is_some()
     }
 

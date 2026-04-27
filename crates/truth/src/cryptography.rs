@@ -99,6 +99,7 @@ pub struct MerkleNode {
 pub struct MerkleTree {
     leaves: Vec<[u8; 32]>,
     nodes: Vec<[u8; 32]>,
+    #[allow(dead_code)]
     height: usize,
 }
 
@@ -128,7 +129,7 @@ impl MerkleTree {
             levels.push(current_level.clone());
         }
 
-        let root = levels.last().unwrap().first().copied();
+        let _root = levels.last().unwrap().first().copied();
         let nodes: Vec<[u8; 32]> = levels.into_iter().flatten().collect();
 
         Self {
@@ -178,7 +179,7 @@ impl MerkleTree {
             });
 
             current_idx = current_idx / 2;
-            let next_level_len = (level_leaves.len() + 1) / 2;
+            let _next_level_len = (level_leaves.len() + 1) / 2;
             level_leaves = level_leaves
                 .chunks(2)
                 .map(|c| combine_hashes(c[0], if c.len() > 1 { c[1] } else { c[0] }))

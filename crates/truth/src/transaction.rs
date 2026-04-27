@@ -1,4 +1,4 @@
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::Verifier;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
